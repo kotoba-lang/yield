@@ -10,7 +10,7 @@
 
 (deftest namespace-loads
   (testing "the restored CLJC namespace loads"
-    (is (some? (the-ns 'yield)))))
+    (is (some? (find-ns 'yield)))))
 
 ;; mirrors `gaussian_monte_carlo_mean_near_nominal` (monte_carlo.rs)
 (deftest gaussian-monte-carlo-mean-near-nominal
