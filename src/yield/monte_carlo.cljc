@@ -2,9 +2,28 @@
   "Monte Carlo simulation engine with configurable parameter distributions.
   Restored from kami-yield's `monte_carlo` module (kami-engine/kami-yield/
   src/monte_carlo.rs, deleted PR #82). Uses a deterministic LCG PRNG with
-  u64 wraparound arithmetic (JVM `unchecked-*` ops on `long` — same
-  2's-complement bit pattern as Rust's `wrapping_mul`/`wrapping_add`;
-  unsigned interpretation via `unsigned-bit-shift-right`)."
+  u64 wraparound arithmetic — the same 2's-complement bit pattern as Rust's
+  `wrapping_mul`/`wrapping_add`.
+
+  Until 2026-08-25 that arithmetic was written once, in JVM terms, in a file
+  carrying a `.cljc` extension. The docstring said so in as many words:
+  \"JVM `unchecked-*` ops on `long`\". ClojureScript has neither. Measured on
+  that date under nbb, one step from state 12345:
+
+    (unchecked-add (unchecked-multiply 12345 6364136223846793005)
+                   1442695040888963407)
+      nbb  7.856670437842954e+22   -- a float; nothing wrapped
+      JVM  -1206486762903477482
+
+  and `(bit-shift-left 1 53)`, the divisor that turns 53 bits into a unit
+  interval, was 2097152 there rather than 2^53 — so `lcg-next-f64` returned
+  values in the billions from a function documented to return `[0,1)`. Every
+  distribution below is built on it.
+
+  Both are now written per runtime: `long` on the JVM, `js/BigInt` with
+  `BigInt.asUintN 64` on ClojureScript. `state` is opaque to every caller —
+  it is only ever threaded, never compared — so its representation differing
+  between hosts is invisible above this layer."
   )
 
 (defn monte-carlo-config [num-runs seed parameters] {:num-runs num-runs :seed seed :parameters parameters})
@@ -19,12 +38,38 @@
   {:parameter-name parameter-name :values values :mean mean :std-dev std-dev
    :min min :max max :yield-pass yield-pass})
 
+;; 2^53, the number of distinct values the top 53 bits can take. Written out
+;; rather than as `(bit-shift-left 1 53)`, which on ClojureScript is 2097152 --
+;; the shift count is taken mod 32. It is a power of two, so it is exact as a
+;; JVM long and as a JS double alike.
+(def ^:private two-pow-53 9007199254740992.0)
+
+(defn- lcg-step
+  "One 64-bit LCG step, wrapped modulo 2^64.
+
+  `:clj` keeps the `long` arithmetic this was written with. `:cljs` uses
+  `js/BigInt`, because a JS number is a double: the multiplier alone
+  (6364136223846793005) is already rounded when ClojureScript reads it, so no
+  amount of care afterwards could have recovered the sequence."
+  [state]
+  #?(:clj  (unchecked-add (unchecked-multiply (long state) 6364136223846793005)
+                          1442695040888963407)
+     :cljs (js/BigInt.asUintN
+            64 (+ (* (js/BigInt state) (js/BigInt "6364136223846793005"))
+                  (js/BigInt "1442695040888963407")))))
+
+(defn- lcg-unit
+  "The top 53 bits of `state`, as a double in `[0,1)`."
+  [state]
+  #?(:clj  (/ (double (unsigned-bit-shift-right state 11)) two-pow-53)
+     :cljs (/ (js/Number (/ (js/BigInt.asUintN 64 state) (js/BigInt 2048)))
+              two-pow-53)))
+
 (defn- lcg-next-f64
   "One LCG step. Returns `[value state']`, `value` uniform in `[0,1)`."
   [state]
-  (let [state' (unchecked-add (unchecked-multiply state 6364136223846793005) 1442695040888963407)
-        shifted (unsigned-bit-shift-right state' 11)]
-    [(/ (double shifted) (double (bit-shift-left 1 53))) state']))
+  (let [state' (lcg-step state)]
+    [(lcg-unit state') state']))
 
 (defn- lcg-next-gaussian
   "One standard-normal sample via Box-Muller. Returns `[value state']`."
