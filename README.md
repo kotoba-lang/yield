@@ -18,7 +18,7 @@ aging/degradation estimation.
 
 Restored — all 3 modules ported from the original 420-line Rust source
 (`lib.rs` + `monte_carlo.rs` + `corner.rs` + `aging.rs`), with all 6
-original Rust unit tests mirrored 1:1 in `test/yield_test.cljc` (+1 smoke
+original Rust unit tests mirrored 1:1 in `test/yield_test.cljk` (+1 smoke
 test) — 7 tests / 9 assertions, 0 failures. Pure data + pure functions
 throughout; no IO/GPU.
 

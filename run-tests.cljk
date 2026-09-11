@@ -10,7 +10,7 @@
    Anything added to `test/` as `.cljc` belongs in BOTH lists below; being
    required is not being run.
 
-     nbb --classpath \"src:test:$(clojure -Spath)\" run-tests.cljs"
+     nbb --classpath \"src:test:$(clojure -Spath)\" run-tests.cljk"
   (:require [cljs.test :as t]
             [monte-carlo-parity-test]))
 
